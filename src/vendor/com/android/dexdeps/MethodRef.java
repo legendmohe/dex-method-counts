@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.android.dexdeps;
+package vendor.com.android.dexdeps;
 
 import java.util.Arrays;
 
@@ -26,7 +26,7 @@ public class MethodRef {
      * Initializes a new field reference.
      */
     public MethodRef(String declClass, String[] argTypes, String returnType,
-            String methodName) {
+                     String methodName) {
         mDeclClass = declClass;
         mArgTypes = argTypes;
         mReturnType = returnType;
@@ -73,7 +73,7 @@ public class MethodRef {
      * prototype strings.
      */
     private static String descriptorFromProtoArray(String[] protos,
-            String returnType) {
+                                                   String returnType) {
         StringBuilder builder = new StringBuilder();
 
         builder.append("(");
@@ -87,19 +87,21 @@ public class MethodRef {
         return builder.toString();
     }
 
-    @Override public boolean equals(Object o) {
+    @Override
+    public boolean equals(Object o) {
         if (!(o instanceof MethodRef)) {
             return false;
         }
         MethodRef other = (MethodRef) o;
         return other.mDeclClass.equals(mDeclClass) &&
-            other.mReturnType.equals(mReturnType) &&
-            other.mMethodName.equals(mMethodName) &&
-            Arrays.equals(other.mArgTypes, mArgTypes);
+                other.mReturnType.equals(mReturnType) &&
+                other.mMethodName.equals(mMethodName) &&
+                Arrays.equals(other.mArgTypes, mArgTypes);
     }
 
-    @Override public int hashCode() {
+    @Override
+    public int hashCode() {
         return mDeclClass.hashCode() ^ mReturnType.hashCode() ^
-            mMethodName.hashCode() ^ Arrays.hashCode(mArgTypes);
+                mMethodName.hashCode() ^ Arrays.hashCode(mArgTypes);
     }
 }

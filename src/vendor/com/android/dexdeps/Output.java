@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.android.dexdeps;
+package vendor.com.android.dexdeps;
 
 import java.io.PrintStream;
 
@@ -68,7 +68,7 @@ public class Output {
     }
 
     public static void generate(DexData dexData, String format,
-            boolean justClasses) {
+                                boolean justClasses) {
         if (format.equals("brief")) {
             printBrief(dexData, justClasses);
         } else if (format.equals("xml")) {
@@ -120,7 +120,7 @@ public class Output {
                 FieldRef ref = fields[j];
 
                 out.println(descriptorToDot(ref.getDeclClassName()) +
-                    "." + ref.getName() + " : " + ref.getTypeName());
+                        "." + ref.getName() + " : " + ref.getTypeName());
             }
         }
     }
@@ -137,14 +137,14 @@ public class Output {
                 MethodRef ref = methods[j];
 
                 out.println(descriptorToDot(ref.getDeclClassName()) +
-                    "." + ref.getName() + " : " + ref.getDescriptor());
+                        "." + ref.getName() + " : " + ref.getDescriptor());
             }
         }
     }
 
     /**
      * Prints the output in XML format.
-     *
+     * <p>
      * We shouldn't need to XML-escape the field/method info.
      */
     static void printXml(DexData dexData, boolean justClasses) {
@@ -170,7 +170,7 @@ public class Output {
                 }
 
                 out.println(IN1 +
-                    "<package name=\"" + packageName + "\">");
+                        "<package name=\"" + packageName + "\">");
 
                 prevPackage = packageName;
             }
@@ -196,7 +196,7 @@ public class Output {
             FieldRef fref = fields[i];
 
             out.println(IN3 + "<field name=\"" + fref.getName() +
-                "\" type=\"" + descriptorToDot(fref.getTypeName()) + "\"/>");
+                    "\" type=\"" + descriptorToDot(fref.getTypeName()) + "\"/>");
         }
     }
 
@@ -214,16 +214,16 @@ public class Output {
             if (constructor) {
                 // use class name instead of method name
                 out.println(IN3 + "<constructor name=\"" +
-                    classNameOnly(declClassName) + "\">");
+                        classNameOnly(declClassName) + "\">");
             } else {
                 out.println(IN3 + "<method name=\"" + mref.getName() +
-                    "\" return=\"" + descriptorToDot(mref.getReturnTypeName()) +
-                    "\">");
+                        "\" return=\"" + descriptorToDot(mref.getReturnTypeName()) +
+                        "\">");
             }
             String[] args = mref.getArgumentTypeNames();
             for (int j = 0; j < args.length; j++) {
                 out.println(IN4 + "<parameter type=\"" +
-                    descriptorToDot(args[j]) + "\"/>");
+                        descriptorToDot(args[j]) + "\"/>");
             }
             if (constructor) {
                 out.println(IN3 + "</constructor>");
@@ -247,15 +247,24 @@ public class Output {
     public static String primitiveTypeLabel(char typeChar) {
         /* primitive type; substitute human-readable name in */
         switch (typeChar) {
-            case 'B':   return "byte";
-            case 'C':   return "char";
-            case 'D':   return "double";
-            case 'F':   return "float";
-            case 'I':   return "int";
-            case 'J':   return "long";
-            case 'S':   return "short";
-            case 'V':   return "void";
-            case 'Z':   return "boolean";
+            case 'B':
+                return "byte";
+            case 'C':
+                return "char";
+            case 'D':
+                return "double";
+            case 'F':
+                return "float";
+            case 'I':
+                return "int";
+            case 'J':
+                return "long";
+            case 'S':
+                return "short";
+            case 'V':
+                return "void";
+            case 'Z':
+                return "boolean";
             default:
                 /* huh? */
                 System.err.println("Unexpected class char " + typeChar);
@@ -288,8 +297,7 @@ public class Output {
         } else {
             /* account for leading 'L' and trailing ';' */
             if (targetLen >= 2 && descr.charAt(offset) == 'L' &&
-                descr.charAt(offset+targetLen-1) == ';')
-            {
+                    descr.charAt(offset + targetLen - 1) == ';') {
                 targetLen -= 2;     /* two fewer chars to copy */
                 offset++;           /* skip the 'L' */
             }
@@ -324,7 +332,7 @@ public class Output {
         if (start < 0) {
             return dotted;
         } else {
-            return dotted.substring(start+1);
+            return dotted.substring(start + 1);
         }
     }
 

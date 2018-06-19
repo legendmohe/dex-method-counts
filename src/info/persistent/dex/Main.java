@@ -14,28 +14,22 @@
 
 package info.persistent.dex;
 
-import com.android.dexdeps.DexData;
-import com.android.dexdeps.DexDataException;
+import vendor.com.android.dexdeps.DexData;
+import vendor.com.android.dexdeps.DexDataException;
+import vendor.com.android.dexdeps.MethodRef;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.RandomAccessFile;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.io.*;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 
 public class Main {
-    private boolean countFields;
-    private boolean includeClasses;
-    private String packageFilter;
-    private int maxDepth = Integer.MAX_VALUE;
-    private DexMethodCounts.Filter filter = DexMethodCounts.Filter.ALL;
-    private DexMethodCounts.OutputStyle outputStyle = DexMethodCounts.OutputStyle.TREE;
+
+    private static final String STACK_TRACE_METHOD_EXPRESSION = "%t %c\\.%m\\(%a\\)";
+    private static final String STACK_TRACE_CLASS_EXPRESSION = "%c";
+
+    private String[] mMappingFiles;
 
     public static void main(String[] args) {
         Main main = new Main();
@@ -45,27 +39,59 @@ public class Main {
     void run(String[] args) {
         try {
             String[] inputFileNames = parseArgs(args);
-            int overallCount = 0;
-            for (String fileName : collectFileNames(inputFileNames)) {
-                System.out.println("Processing " + fileName);
-                DexCount counts;
-                if (countFields) {
-                    counts = new DexFieldCounts(outputStyle);
-                } else {
-                    counts = new DexMethodCounts(outputStyle);
-                }
-                List<RandomAccessFile> dexFiles = openInputFiles(fileName);
+//            String[] inputFileNames = new String[]{"old.apk", "new.apk"};
+            String[] mappingFileNames = mMappingFiles;
+//            String[] mappingFileNames = new String[]{"old-mapping.txt", "new-mapping.txt"};
 
-                for (RandomAccessFile dexFile : dexFiles) {
+            Set<String> oldMethods = new HashSet<>();
+            Set<String> oldClasses = new HashSet<>();
+            String oldFileName = "";
+
+            List<String> collectFileNames = collectFileNames(inputFileNames);
+            for (int i = 0, collectFileNamesSize = collectFileNames.size(); i < collectFileNamesSize; i++) {
+                String fileName = collectFileNames.get(i);
+                System.out.println("Processing " + fileName);
+                System.out.println("file size:" + Util.readableFileSize(new File(fileName).length()));
+
+                Set<String> newMethods = new HashSet<>();
+                Set<String> newClasses = new HashSet<>();
+                for (RandomAccessFile dexFile : openInputFiles(fileName)) {
                     DexData dexData = new DexData(dexFile);
                     dexData.load();
-                    counts.generate(dexData, includeClasses, packageFilter, maxDepth, filter);
+
+                    processMethods(newMethods, dexData);
+                    processClasses(dexData, newClasses);
+
                     dexFile.close();
                 }
-                counts.output();
-                overallCount = counts.getOverallCount();
+
+                System.out.println("total classes[" + newClasses.size() + "]");
+                System.out.println("total methods[" + newMethods.size() + "]");
+
+
+                if (mappingFileNames != null && mappingFileNames.length > 0) {
+                    if (mappingFileNames.length > i) {
+                        System.out.println("unmapping...");
+                        Util.unmapping(mappingFileNames[i], STACK_TRACE_CLASS_EXPRESSION, false, newClasses);
+                        Util.unmapping(mappingFileNames[i], STACK_TRACE_METHOD_EXPRESSION, false, newMethods);
+                    } else {
+                        System.err.println("unmatched mapping file for file[" + fileName + "]");
+                    }
+                }
+
+                if (oldClasses.size() != 0) {
+                    System.out.println("====class diff old:" + oldFileName + " new:" + fileName + "====");
+                    processOldAndNewStringList(oldClasses, newClasses);
+                }
+                if (oldMethods.size() != 0) {
+                    System.out.println("====method diff old:" + oldFileName + " new:" + fileName + "====");
+                    processOldAndNewStringList(oldMethods, newMethods);
+                }
+
+                oldMethods = newMethods;
+                oldClasses = newClasses;
+                oldFileName = fileName;
             }
-            System.out.println(String.format("Overall %s count: %d", countFields ? "field" : "method", overallCount));
         } catch (UsageException ue) {
             usage();
             System.exit(2);
@@ -78,6 +104,224 @@ public class Main {
             /* a message was already reported, just bail quietly */
             System.exit(1);
         }
+    }
+
+    private void processClasses(DexData dexData, Set<String> newClasses) {
+        Set<String> allClassNames = dexData.getAllClassNames();
+        for (String className : allClassNames) {
+            String elementString = formatTypeElementString(className);
+            if (elementString != null && elementString.length() > 0) {
+                newClasses.add(elementString);
+            }
+        }
+    }
+
+    private void processMethods(Set<String> newMethods, DexData dexData) {
+        MethodRef[] methodRefs = dexData.getMethodRefs();
+        for (MethodRef methodRef : methodRefs) {
+            String methodString = getFormattedMethodString(methodRef);
+            if (methodString != null && methodString.length() > 0) {
+                newMethods.add(methodString);
+            }
+        }
+    }
+
+    private void processOldAndNewStringList(Set<String> oldStrings, Set<String> newStrings) {
+        Set<String> addedMethodSet = new HashSet<>(newStrings);
+        addedMethodSet.removeAll(oldStrings);
+
+        Set<String> removedMethodSet = new HashSet<>(oldStrings);
+        removedMethodSet.removeAll(newStrings);
+
+        List<String> orderedAddSet = new ArrayList<>(addedMethodSet);
+        Collections.sort(orderedAddSet);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<" + orderedAddSet.size() + " added>\n");
+        for (String s : orderedAddSet) {
+            sb.append(s).append('\n');
+        }
+
+        List<String> orderedRemoveSet = new ArrayList<>(removedMethodSet);
+        Collections.sort(orderedRemoveSet);
+
+        sb.append("\n").append("<" + orderedRemoveSet.size() + " removed>\n");
+        for (String s : orderedRemoveSet) {
+            sb.append(s).append('\n');
+        }
+
+        System.out.println(sb.toString());
+    }
+
+    private String getFormattedMethodString(MethodRef methodRef) {
+        try {
+
+            // class name
+            String className = methodRef.getDeclClassName();
+            className = className.substring(1, className.length() - 1).replace("/", ".");
+
+            // method name
+            String methodName = methodRef.getName();
+            // 跳过access***方法
+            if (methodName.contains("$")) {
+                return null;
+            }
+
+            // params
+            String desc = methodRef.getDescriptor();
+            int sepIndex = desc.indexOf(")");
+            String paramListString = desc.substring(1, sepIndex);
+            paramListString = formatParamListString(paramListString);
+
+            // return value
+            String returnString = methodRef.getReturnTypeName();
+            returnString = formatTypeElementString(returnString);
+
+            // combine
+            return returnString + " " + className + "." + methodName + "(" + paramListString + ")";
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    /**
+     * 标识字符	含义
+     * B	基本类型byte
+     * C	char
+     * D	double
+     * F	float
+     * I	int
+     * J	long
+     * S	short
+     * Z	boolean
+     * V	void
+     * L	对象类型，如Ljava/lang/Object;
+     *
+     * @param param
+     * @return
+     */
+    private String formatParamListString(String param) {
+        StringBuilder resultSb = new StringBuilder();
+        int i = 0;
+        while (i < param.length()) {
+            char head = param.charAt(i);
+
+            // array
+            boolean inArray = false;
+            if (head == '[') {
+                inArray = true;
+                head = param.charAt(++i);
+            }
+
+            switch (head) {
+                case 'B':
+                    resultSb.append("byte");
+                    break;
+                case 'C':
+                    resultSb.append("char");
+                    break;
+                case 'D':
+                    resultSb.append("double");
+                    break;
+                case 'F':
+                    resultSb.append("float");
+                    break;
+                case 'J':
+                    resultSb.append("long");
+                    break;
+                case 'S':
+                    resultSb.append("short");
+                    break;
+                case 'I':
+                    resultSb.append("int");
+                    break;
+                case 'V':
+                    resultSb.append("void");
+                    break;
+                case 'Z':
+                    resultSb.append("boolean");
+                    break;
+            }
+            if (head == 'L') {
+                int objectEndMark = param.indexOf(";", i);
+                String objectStr = param.substring(i, objectEndMark);
+                resultSb.append(formatTypeElementString(objectStr));
+
+                i = objectEndMark + 1;
+            } else {
+                i++;
+            }
+
+            if (inArray) {
+                resultSb.append("[]");
+            }
+            resultSb.append(", ");
+        }
+
+        if (resultSb.length() > 0) {
+            resultSb.deleteCharAt(resultSb.length() - 1)
+                    .deleteCharAt(resultSb.length() - 1);
+        }
+        return resultSb.toString();
+    }
+
+    /**
+     * 标识字符	含义
+     * B	基本类型byte
+     * C	char
+     * D	double
+     * F	float
+     * I	int
+     * J	long
+     * S	short
+     * Z	boolean
+     * V	void
+     * L	对象类型，如Ljava/lang/Object;
+     *
+     * @param returnString
+     * @return
+     */
+    private String formatTypeElementString(String returnString) {
+        boolean isArray = false;
+        if (returnString.startsWith("[")) {
+            returnString = returnString.substring(1);
+            isArray = true;
+        }
+
+        // base
+        switch (returnString) {
+            case "B":
+                return "byte";
+            case "C":
+                return "char";
+            case "D":
+                return "double";
+            case "F":
+                return "float";
+            case "J":
+                return "long";
+            case "S":
+                return "short";
+            case "I":
+                return "int";
+            case "V":
+                return "void";
+            case "Z":
+                return "boolean";
+        }
+        // Object
+        if (returnString.startsWith("L")) {
+            returnString = returnString.substring(1).replace("/", ".");
+        }
+        if (returnString.endsWith(";")) {
+            returnString = returnString.substring(0, returnString.length() - 1);
+        }
+        // array
+        if (isArray) {
+            returnString += "[]";
+        }
+        return returnString;
     }
 
     /**
@@ -128,7 +372,7 @@ public class Main {
         zipFile.close();
     }
 
-    RandomAccessFile openDexFile(ZipFile zipFile, ZipEntry entry) throws IOException  {
+    RandomAccessFile openDexFile(ZipFile zipFile, ZipEntry entry) throws IOException {
         // We know it's a zip; see if there's anything useful inside.  A
         // failure here results in some type of IOException (of which
         // ZipException is a subclass).
@@ -158,37 +402,21 @@ public class Main {
     }
 
     private String[] parseArgs(String[] args) {
-        int idx;
+        int idx = 0;
 
         for (idx = 0; idx < args.length; idx++) {
             String arg = args[idx];
 
             if (arg.equals("--") || !arg.startsWith("--")) {
                 break;
-            } else if (arg.equals("--count-fields")) {
-                countFields = true;
-            } else if (arg.equals("--include-classes")) {
-                includeClasses = true;
-            } else if (arg.startsWith("--package-filter=")) {
-                packageFilter = arg.substring(arg.indexOf('=') + 1);
-            } else if (arg.startsWith("--max-depth=")) {
-                maxDepth =
-                    Integer.parseInt(arg.substring(arg.indexOf('=') + 1));
-            } else if (arg.startsWith("--filter=")) {
-                filter = Enum.valueOf(
-                    DexMethodCounts.Filter.class,
-                    arg.substring(arg.indexOf('=') + 1).toUpperCase());
-            } else if (arg.startsWith("--output-style")) {
-                outputStyle = Enum.valueOf(
-                    DexMethodCounts.OutputStyle.class,
-                    arg.substring(arg.indexOf('=') + 1).toUpperCase());
+            } else if (arg.startsWith("--mapping")) {
+                mMappingFiles = arg.substring(arg.indexOf('=') + 1).split(",");
             } else {
                 System.err.println("Unknown option '" + arg + "'");
                 throw new UsageException();
             }
         }
 
-        // We expect at least one more argument (file name).
         int fileCount = args.length - idx;
         if (fileCount == 0) {
             throw new UsageException();
@@ -200,15 +428,8 @@ public class Main {
 
     private void usage() {
         System.err.print(
-            "DEX per-package/class method counts v1.5\n" +
-            "Usage: dex-method-counts [options] <file.{dex,apk,jar,directory}> ...\n" +
-            "Options:\n" +
-            "  --count-fields\n" +
-            "  --include-classes\n" +
-            "  --package-filter=com.foo.bar\n" +
-            "  --max-depth=N\n" +
-            "  --filter=ALL|DEFINED_ONLY|REFERENCED_ONLY\n" +
-            "  --output-style=FLAT|TREE\n"
+                "DEX per-package/class method diff v1.0\n" +
+                        "Usage: dex-method-diff --mapping=<mapping file,> <file.{dex,apk,jar,directory}> ...\n"
         );
     }
 
@@ -225,7 +446,7 @@ public class Main {
             File file = new File(inputFileName);
             if (file.isDirectory()) {
                 String dirPath = file.getAbsolutePath();
-                for (String fileInDir: file.list()){
+                for (String fileInDir : file.list()) {
                     fileNames.add(dirPath + File.separator + fileInDir);
                 }
             } else {
@@ -235,5 +456,6 @@ public class Main {
         return fileNames;
     }
 
-    private static class UsageException extends RuntimeException {}
+    private static class UsageException extends RuntimeException {
+    }
 }

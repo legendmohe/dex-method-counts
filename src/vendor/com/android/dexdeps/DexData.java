@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-package com.android.dexdeps;
+package vendor.com.android.dexdeps;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Data extracted from a DEX file.
@@ -46,7 +48,7 @@ public class DexData {
     /**
      * Loads the contents of the DEX file into our data structures.
      *
-     * @throws IOException if we encounter a problem while reading
+     * @throws IOException      if we encounter a problem while reading
      * @throws DexDataException if the DEX contents look bad
      */
     public void load() throws IOException {
@@ -67,7 +69,8 @@ public class DexData {
      */
     private static boolean verifyMagic(byte[] magic) {
         return Arrays.equals(magic, HeaderItem.DEX_FILE_MAGIC) ||
-            Arrays.equals(magic, HeaderItem.DEX_FILE_MAGIC_API_13);
+                Arrays.equals(magic, HeaderItem.DEX_FILE_MAGIC_API_13) ||
+                Arrays.equals(magic, HeaderItem.DEX_FILE_MAGIC_API_UNKNOWN);
     }
 
     /**
@@ -82,7 +85,7 @@ public class DexData {
         readBytes(magic);
         if (!verifyMagic(magic)) {
             System.err.println("Magic number is wrong -- are you sure " +
-                "this is a DEX file?");
+                    "this is a DEX file?");
             throw new DexDataException();
         }
 
@@ -90,26 +93,30 @@ public class DexData {
          * Read the endian tag, so we properly swap things as we read
          * them from here on.
          */
-        seek(8+4+20+4+4);
+        seek(8 + 4 + 20 + 4 + 4);
         mHeaderItem.endianTag = readInt();
         if (mHeaderItem.endianTag == HeaderItem.ENDIAN_CONSTANT) {
             /* do nothing */
-        } else if (mHeaderItem.endianTag == HeaderItem.REVERSE_ENDIAN_CONSTANT){
+        } else if (mHeaderItem.endianTag == HeaderItem.REVERSE_ENDIAN_CONSTANT) {
             /* file is big-endian (!), reverse future reads */
             isBigEndian = true;
         } else {
             System.err.println("Endian constant has unexpected value " +
-                Integer.toHexString(mHeaderItem.endianTag));
+                    Integer.toHexString(mHeaderItem.endianTag));
             throw new DexDataException();
         }
 
-        seek(8+4+20);  // magic, checksum, signature
+        seek(8 + 4 + 20);  // magic, checksum, signature
         mHeaderItem.fileSize = readInt();
         mHeaderItem.headerSize = readInt();
-        /*mHeaderItem.endianTag =*/ readInt();
-        /*mHeaderItem.linkSize =*/ readInt();
-        /*mHeaderItem.linkOff =*/ readInt();
-        /*mHeaderItem.mapOff =*/ readInt();
+        /*mHeaderItem.endianTag =*/
+        readInt();
+        /*mHeaderItem.linkSize =*/
+        readInt();
+        /*mHeaderItem.linkOff =*/
+        readInt();
+        /*mHeaderItem.mapOff =*/
+        readInt();
         mHeaderItem.stringIdsSize = readInt();
         mHeaderItem.stringIdsOff = readInt();
         mHeaderItem.typeIdsSize = readInt();
@@ -122,13 +129,15 @@ public class DexData {
         mHeaderItem.methodIdsOff = readInt();
         mHeaderItem.classDefsSize = readInt();
         mHeaderItem.classDefsOff = readInt();
-        /*mHeaderItem.dataSize =*/ readInt();
-        /*mHeaderItem.dataOff =*/ readInt();
+        /*mHeaderItem.dataSize =*/
+        readInt();
+        /*mHeaderItem.dataOff =*/
+        readInt();
     }
 
     /**
      * Loads the string table out of the DEX.
-     *
+     * <p>
      * First we read all of the string_id_items, then we read all of the
      * string_data_item.  Doing it this way should allow us to avoid
      * seeking around in the file.
@@ -271,13 +280,20 @@ public class DexData {
             mClassDefs[i] = new ClassDefItem();
             mClassDefs[i].classIdx = readInt();
 
-            /* access_flags = */ readInt();
-            /* superclass_idx = */ readInt();
-            /* interfaces_off = */ readInt();
-            /* source_file_idx = */ readInt();
-            /* annotations_off = */ readInt();
-            /* class_data_off = */ readInt();
-            /* static_values_off = */ readInt();
+            /* access_flags = */
+            readInt();
+            /* superclass_idx = */
+            readInt();
+            /* interfaces_off = */
+            readInt();
+            /* source_file_idx = */
+            readInt();
+            /* annotations_off = */
+            readInt();
+            /* class_data_off = */
+            readInt();
+            /* static_values_off = */
+            readInt();
 
             //System.out.println(i + ": " + mClassDefs[i].classIdx + " " +
             //    mStrings[mTypeIds[mClassDefs[i].classIdx].descriptorIdx]);
@@ -289,7 +305,7 @@ public class DexData {
      * DEX file or within the VM (e.g. primitive classes and arrays).
      */
     void markInternalClasses() {
-        for (int i = mClassDefs.length -1; i >= 0; i--) {
+        for (int i = mClassDefs.length - 1; i >= 0; i--) {
             mTypeIds[mClassDefs[i].classIdx].internal = true;
         }
 
@@ -309,6 +325,22 @@ public class DexData {
         }
     }
 
+    public Set<String> getAllClassNames() {
+        Set<String> result = new HashSet<>();
+        for (TypeIdItem mTypeId : mTypeIds) {
+            String className = mStrings[mTypeId.descriptorIdx];
+
+            if (className.length() == 1) {
+                // primitive class
+                mTypeId.internal = true;
+            } else if (className.charAt(0) == '[') {
+                mTypeId.internal = true;
+            } else {
+                result.add(className);
+            }
+        }
+        return result;
+    }
 
     /*
      * =======================================================================
@@ -362,7 +394,7 @@ public class DexData {
         for (int i = 0; i < mTypeIds.length; i++) {
             if (!mTypeIds[i].internal) {
                 sparseRefs[i] =
-                    new ClassRef(mStrings[mTypeIds[i].descriptorIdx]);
+                        new ClassRef(mStrings[mTypeIds[i].descriptorIdx]);
                 count++;
             }
         }
@@ -498,10 +530,10 @@ public class DexData {
 
         if (isBigEndian) {
             return (tmpBuf[3] & 0xff) | ((tmpBuf[2] & 0xff) << 8) |
-                   ((tmpBuf[1] & 0xff) << 16) | ((tmpBuf[0] & 0xff) << 24);
+                    ((tmpBuf[1] & 0xff) << 16) | ((tmpBuf[0] & 0xff) << 24);
         } else {
             return (tmpBuf[0] & 0xff) | ((tmpBuf[1] & 0xff) << 8) |
-                   ((tmpBuf[2] & 0xff) << 16) | ((tmpBuf[3] & 0xff) << 24);
+                    ((tmpBuf[2] & 0xff) << 16) | ((tmpBuf[3] & 0xff) << 24);
         }
     }
 
@@ -525,7 +557,7 @@ public class DexData {
 
     /**
      * Reads a UTF-8 string.
-     *
+     * <p>
      * We don't know how long the UTF-8 string is, so we have to read one
      * byte at a time.  We could make an educated guess based on the
      * utf16_size and seek back if we get it wrong, but seeking backward
@@ -569,16 +601,18 @@ public class DexData {
 
         /* expected magic values */
         public static final byte[] DEX_FILE_MAGIC = {
-            0x64, 0x65, 0x78, 0x0a, 0x30, 0x33, 0x36, 0x00 };
+                0x64, 0x65, 0x78, 0x0a, 0x30, 0x33, 0x36, 0x00};
         public static final byte[] DEX_FILE_MAGIC_API_13 = {
-            0x64, 0x65, 0x78, 0x0a, 0x30, 0x33, 0x35, 0x00 };
+                0x64, 0x65, 0x78, 0x0a, 0x30, 0x33, 0x35, 0x00};
+        public static final byte[] DEX_FILE_MAGIC_API_UNKNOWN = {
+                0x64, 0x65, 0x78, 0x0a, 0x30, 0x33, 0x37, 0x00};
         public static final int ENDIAN_CONSTANT = 0x12345678;
         public static final int REVERSE_ENDIAN_CONSTANT = 0x78563412;
     }
 
     /**
      * Holds the contents of a type_id_item.
-     *
+     * <p>
      * This is chiefly a list of indices into the string table.  We need
      * some additional bits of data, such as whether or not the type ID
      * represents a class defined in this DEX, so we use an object for
@@ -622,7 +656,7 @@ public class DexData {
 
     /**
      * Holds the contents of a class_def_item.
-     *
+     * <p>
      * We don't really need a class for this, but there's some stuff in
      * the class_def_item that we might want later.
      */
