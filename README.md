@@ -1,3 +1,5 @@
+添加diff多个apk的method，class增减情况的功能
+
 # dex-method-counts
 
 Simple tool to output per-package method counts in an Android DEX executable grouped by package, to aid in getting under the 65,536 referenced method limit. More details are [in this blog post](http://blog.persistent.info/2014/05/per-package-method-counts-for-androids.html).
