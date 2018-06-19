@@ -1,5 +1,13 @@
 添加diff多个apk的method，class增减情况的功能
 
+# 使用方法：
+
+    java -jar dex-method-diff.jar --mapping=<mapping file,> <file.{dex,apk,jar,directory}>
+
+其中–mapping是可选项,例如：
+
+    java -jar dex-method-diff.jar --mapping=old-mapping.txt,new-mapping.txt old.apk new.apk > result.txt
+
 # dex-method-counts
 
 Simple tool to output per-package method counts in an Android DEX executable grouped by package, to aid in getting under the 65,536 referenced method limit. More details are [in this blog post](http://blog.persistent.info/2014/05/per-package-method-counts-for-androids.html).
